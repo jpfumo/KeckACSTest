@@ -1,0 +1,38 @@
+EESchema Schematic File Version 4
+EELAYER 30 0
+EELAYER END
+$Descr A4 11693 8268
+encoding utf-8
+Sheet 4 4
+Title ""
+Date ""
+Rev ""
+Comp ""
+Comment1 ""
+Comment2 ""
+Comment3 ""
+Comment4 ""
+$EndDescr
+$Comp
+L Kona_Parts:SI8244-Kona_Parts U?
+U 1 1 62A88658
+P 6150 3650
+F 0 "U?" H 6150 4415 50  0000 C CNN
+F 1 "SI8244-Kona_Parts" H 6150 4324 50  0000 C CNN
+F 2 "" H 6150 3950 50  0001 C CNN
+F 3 "" H 6150 3950 50  0001 C CNN
+	1    6150 3650
+	1    0    0    -1  
+$EndComp
+$Comp
+L Kona_Parts:CY8C4245AXI-483 U?
+U 1 1 62A89549
+P 3650 3500
+F 0 "U?" H 4694 3546 50  0000 L CNN
+F 1 "CY8C4245AXI-483" H 4694 3455 50  0000 L CNN
+F 2 "" H 2700 4400 50  0001 C CNN
+F 3 "" H 2700 4400 50  0001 C CNN
+	1    3650 3500
+	1    0    0    -1  
+$EndComp
+$EndSCHEMATC
