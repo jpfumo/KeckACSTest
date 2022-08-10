@@ -5,9 +5,31 @@
 #define CLK5K0 100
 #define CLK625H0 400
 #define CLK156H25 800
-
-
 #define DigitalInput byte
+
+
+// disable the GALIL for input --- if error too high
+void doGALILError()
+{
+  int err;
+  err = digitalRead(GALIL_ERRn);
+  if (err == 0) {
+    detachInterrupt(digitalPinToInterrupt(GALIL_ERRn));
+    galil_err = true;
+  }
+}
+
+// re-enables the GALIL for input
+void chkGALILError()
+{
+  int err;
+  err = digitalRead(GALIL_ERRn);
+  if (err == 1) {
+    attachInterrupt(digitalPinToInterrupt(GALIL_ERRn), doGALILError, LOW);
+    galil_err = false;
+  }
+}
+
 int  readGALILError(void){
   int temp;
   DigitalInput  val = pcf8574.digitalReadAll();
@@ -15,6 +37,22 @@ int  readGALILError(void){
   if(temp>=127) 
     temp = temp-256;  // make it signed
   return temp;
+}
+
+volatile bool foundGalilHome = false;
+void doGalilHome()
+{
+  foundGalilHome = true;
+  Serial.println(">>> Found Galil home");
+  detachInterrupt(digitalPinToInterrupt(GALIL_HOM));
+}
+
+volatile bool foundGalilIndex = false;
+void doGalilIndex()
+{
+  foundGalilIndex = true;
+  Serial.println(">>> Found Galil index");
+  detachInterrupt(digitalPinToInterrupt(GALIL_IDX));
 }
 
 uint16_t readGALILcurrent(){
@@ -38,14 +76,14 @@ int GALILGo(int k){
   bufptr = 0;
   
   // set the direction based on the sign of the steps
-  if(mymenu[GALIL].m[TOTAL].mvalue.mval.l >0){
+  if(mymenu[PAGE_GALIL].m[TOTAL].mvalue.mval.l >0){
     direction = CCW;
   }
   else{
     direction = CW;
   }
 
-  steps = mymenu[GALIL].m[TOTAL].mvalue.mval.l;
+  steps = mymenu[PAGE_GALIL].m[TOTAL].mvalue.mval.l;
   Serial.printf("steps: %d", steps);
   Serial.println("");
   nsteps = (abs)(steps);
@@ -124,18 +162,18 @@ void GALILRelease(){
 
 int GALILHome(int i){
 
-  attachInterrupt(digitalPinToInterrupt(GALIL_HOM), doHome, LOW);
-  attachInterrupt(digitalPinToInterrupt(GALIL_IDX), doIndex, HIGH);
+  attachInterrupt(digitalPinToInterrupt(GALIL_HOM), doGalilHome, LOW);
+  attachInterrupt(digitalPinToInterrupt(GALIL_IDX), doGalilIndex, HIGH);
 
-  foundHome = false;
+  foundGalilHome = false;
   //Serial.println("GALIL Home Command");
-  while(foundHome == false && (digitalRead(GALIL_HOM)==1)){ // only excute if not home
+  while(foundGalilHome == false && (digitalRead(GALIL_HOM)==1)){ // only excute if not home
     GALILpulse(1, CCW, CLK156H25);//CLK5K0
   }
   //delay(10);
   
-  foundIndex = false;
-  while(foundIndex == false && (digitalRead(GALIL_IDX)==0)){ // only excute if not index
+  foundGalilIndex = false;
+  while(foundGalilIndex == false && (digitalRead(GALIL_IDX)==0)){ // only excute if not index
   //while(1){
     GALILpulse(1, CW, CLK156H25); //CLK156H25
    //delay(100);
@@ -143,7 +181,7 @@ int GALILHome(int i){
   delay(100);// WAIT FOR ROTOR TO SETTLE OUT BEFORE ZERO OF APC
   MTRPUL = 0;   //reset the MTRPUL register
   APC = 0;      // reset the APC
-  mymenu[GALIL].m[APCREG].mvalue.mval.l = APC;
+  mymenu[PAGE_GALIL].m[APCREG].mvalue.mval.l = APC;
   DrawMenus(pagenum);
   return(0);
 }
@@ -211,7 +249,7 @@ void GALIL_Slow(void){
           Galil_SlowFlag = false; // disable the galil_slow call
           TimeOut = micros();
           ElapsedTime = TimeOut - TimeIn;
-          mymenu[GALIL].m[ELAPSED].mvalue.mval.l = ElapsedTime;
+          mymenu[PAGE_GALIL].m[ELAPSED].mvalue.mval.l = ElapsedTime;
           write_file = true;
         }
       }

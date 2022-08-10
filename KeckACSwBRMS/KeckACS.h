@@ -2,7 +2,70 @@
 #ifndef _KECK_ACS_H
 #define _KECK_ACS_H
 
-enum dtype {CW, CCW};
+// Switches to turn on certain debug messaging
+//#define DEBUG_MENUS 
+//#define DEBUG_CYPRESS 
+//#define DEBUG_SWITCHES
+
+
+// CLI
+//Create a 32 bytes static buffer to be used exclusive by SerialCommands object.
+//The size should accomodate command token, arguments, termination sequence and string delimeter \0 char.
+char serial_command_buffer_[32];
+
+//Creates SerialCommands object attached to Serial
+//working buffer = serial_command_buffer_
+//command delimeter: Cr & Lf
+//argument delimeter: SPACE
+SerialCommands serial_commands_(&Serial, serial_command_buffer_, sizeof(serial_command_buffer_), "\n", " ");
+
+
+
+
+typedef enum {
+  CW, 
+  CCW
+  } dtype_t;
+
+typedef enum {
+  PAGE_TOP, 
+  PAGE_GALIL, 
+  PAGE_CYPRESS, 
+  PAGE_CYPREPLY
+  } ptype_t;
+
+typedef enum {
+  HOME, 
+  STEPS, 
+  TOTAL, 
+  MAX, 
+  CLEAR, 
+  CYCLES, 
+  ELAPSED, 
+  ERR, 
+  APCREG, 
+  RECORD, 
+  MGO, 
+  MEXIT
+  } mtype_t;
+  
+typedef enum {
+  label = -1, 
+  funcall, 
+  selectable, 
+  editable, 
+  noneditable, 
+  myexit
+  } itype_t;
+
+// label, static label, does nothing
+// funcall, goto this function &function_name
+// selectable, Goto to this menu
+// editable, Can change the value of this item, used to create an input value
+// noneditable, cannot change the value, used to display a value
+// myexit, indicates the menu exit point (pagenum =0, itemnum = 0)
+
+
 
 #define NUM_LEDS 1
 
@@ -45,7 +108,7 @@ enum dtype {CW, CCW};
 
 static float current_mA = 0;
 static uint16_t rawcurrent;
-
+volatile bool galil_err;
 
 // CYPRESS
 /* --------------------------------------------------------------------- 
