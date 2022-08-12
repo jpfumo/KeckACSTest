@@ -4,9 +4,11 @@
 
 // Switches to turn on certain debug messaging
 //#define DEBUG_MENUS 
+//#define DEBUG_GALIL
 //#define DEBUG_CYPRESS 
 //#define DEBUG_SWITCHES
 
+// SD
 
 // CLI
 //Create a 32 bytes static buffer to be used exclusive by SerialCommands object.
@@ -107,7 +109,7 @@ typedef enum {
 #define GALIL_MAX_STEP 2048
 
 static float current_mA = 0;
-static uint16_t rawcurrent;
+static int16_t rawcurrent;
 volatile bool galil_err;
 
 // CYPRESS

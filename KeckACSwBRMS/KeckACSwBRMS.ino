@@ -59,7 +59,11 @@
 
 #include <FastLED.h>
 
+// For the CLI
 #include <SerialCommands.h>
+
+// For the JSON output of recorded position data
+#include <ArduinoJson.h>
 
 #include "KeckACS.h"
 
@@ -80,7 +84,7 @@ float kp, ki, kd;
 
 long steps = 0;
 int direction = 0;
-long TimeIn, TimeOut;
+uint32_t GalilStartTime, GalilEndTime;
 
 boolean inmotion = false;
 
@@ -99,17 +103,21 @@ unsigned long time_now = 0;
 String dataMessage;
 unsigned char datamsg[640];
 
-// Define CS pin for the SD card module
-const int chipSelect = BUILTIN_SDCARD;  // teensy4.1 internal SD slot!!!e
 
+/* Structure for capturing data from movement */
+#define MAX_SAMPLES 10000
 
-#define BUFF_SIZE 65536
+StaticJsonDocument<100000> samples_json;
 
-union {
-  uint32_t lwords[BUFF_SIZE];
-  uint16_t words[BUFF_SIZE * 2];
-  unsigned char chars[BUFF_SIZE * 4];
-} i2s_buff;
+typedef struct {
+  uint32_t ts;
+  uint32_t apc;
+  int16_t current;
+} sample_t;
+
+sample_t samples[MAX_SAMPLES];
+uint32_t sample_index = 0;
+uint32_t recording_oversample_time = 0;
 
 bool Data_Enable = false;
 bool Galil_SlowFlag = false;
@@ -125,7 +133,6 @@ int buttonState = 0;
 volatile bool RotaryFlag = false;
 
 int TimeBetweenSamples = 1;  //seconds
-int firsttime = 0;
 bool processmenuflag = false;
 bool processmenuitem = false;
 
@@ -161,12 +168,6 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 
 static int menuitem = 0;
 static int pagenum = 0;
-
-#define filetag "/ACS"
-static int filenum = 0;
-static char filename[15];
-static char filelabel[15];
-static int filestatus = 0;
 
 IntervalTimer myTimer;
 
@@ -297,76 +298,6 @@ void doStrutEncoderB()
 
 
 
-
-
-void WriteCurrentData(char * path)
-{
-
-  file = SD.open(path, FILE_WRITE);
-  if (!file) {
-    Serial.println("Failed to open file for appending");
-    return;
-  }
-
-  file.write(i2s_buff.chars, bufptr * 2);
-  file.close();
-  //delay(1);
-}
-
-
-
-// Write to the SD card (DON'T MODIFY THIS FUNCTION)
-//void writeFile(fs::FS &fs, const char * path, const char * message) {
-void writeFile(const char * path, const char * message) {
-  Serial.printf("Writing file: %s\n", path);
-
-  file = SD.open(path, FILE_WRITE);
-  if (!file) {
-    Serial.println("Failed to open file for writing");
-    return;
-  }
-  if (file.print(message)) {
-    Serial.println("File written");
-  } else {
-    Serial.println("Write failed");
-  }
-  file.close();
-}
-
-// Append data to the SD card (DON'T MODIFY THIS FUNCTION)
-//void appendFile(fs::FS &fs, const char * path, const char * message) {
-void appendFile(const char * path, const char * message) {
-  Serial.printf("Appending to file: %s\n", path);
-
-  file = SD.open(path, FILE_WRITE);
-  if (!file) {
-    Serial.println("Failed to open file for appending");
-    return;
-  }
-  if (file.print(message)) {
-    Serial.println("Message appended");
-  } else {
-    Serial.println("Append failed");
-  }
-  file.close();
-}
-
-// Append data to the SD card (DON'T MODIFY THIS FUNCTION)
-//void recordFile(fs::FS &fs, const char * path) {
-void recordFile(const char * path) {
-
-  file = SD.open(path, FILE_WRITE);
-  if (!file) {
-    Serial.println("Failed to open file for appending");
-    return;
-  }
-
-  dataMessage.getBytes(datamsg, dataMessage.length());
-  file.write(datamsg, dataMessage.length());
-
-  file.close();
-  //delay(1);
-}
 
 
 
@@ -629,7 +560,6 @@ void CheckSW()
       DrawMenus(pagenum);
       if (menuitem == mymenu[pagenum].numitems + 1) {
         menu = false;
-        firsttime = 1;  // reset the Flow Meter Page, rev 0.1.2
         tft.fillScreen(TFT_BLACK);
       }
 
@@ -657,16 +587,6 @@ void CheckSW()
     }
   }
 }
-
-
-void bumpFilename(void) {
-  filenum++;
-  sprintf(filelabel, "%04d", filenum);
-  strcpy(filename, filetag);
-  strcat(filename, filelabel);
-  strcat(filename, ".txt");
-}
-
 
 
 void toggleLED(void) {
@@ -724,7 +644,7 @@ void configmenu(void) {
   strcpy(mymenu[PAGE_TOP].m[3].menuname, "CHANGE SSD");
   mymenu[PAGE_TOP].m[3].itemtype = funcall;
   mymenu[PAGE_TOP].m[3].level = 0;
-  mymenu[PAGE_TOP].m[3].myfunc = &ChangeSSD;
+  mymenu[PAGE_TOP].m[3].myfunc = NULL; // &ChangeSSD;
 
   strcpy(mymenu[PAGE_TOP].m[4].menuname, "GALIL PARAMS");
   mymenu[PAGE_TOP].m[4].itemtype = label;
@@ -952,33 +872,7 @@ void configmenu(void) {
 
 }
 
-int ChangeSSD(int x) {
-  if (!SD.begin(chipSelect))
-  {
-    Serial.println("SD initialization failed!");
-    filestatus = 1;
-  }
-  else
-  {
-    Serial.println("initialization done.");
-    // If the data.txt file doesn't exist
-    // Create a file on the SD card and write the data labels
-    file = SD.open(filename);
-    if (!file) {
-      Serial.println("File doens't exist");
-      Serial.println("Creating file...");
-      //writeFile(filename, "current\r\n");
-      filestatus = 1;
-    }
-    else {
-      Serial.println("File already exists");
-      filestatus = 1;
-    }
-    file.close();
-  }
 
-  return 0;
-}
 
 void checkRotary(void) {
   int r_sw = 0;
@@ -1020,22 +914,26 @@ void HighFrequency() { // High Frequency rate group = 5KHz
   sequence++;
 
   if (galil_err == false && inmotion == true && Galil_SlowFlag == false) {
+
+    /* If we are more than 15 steps away from the destination, stream them into the Galil controller */
     if (nsteps > 15) {
+      
       nsteps -= 1;
+      
       if (direction == CW) {
         digitalWrite(GALIL_INC, LOW);
         delayMicroseconds(10);
         digitalWrite(GALIL_INC, HIGH);
         delayMicroseconds(10);
+        
       } else {
         digitalWrite(GALIL_DEC, LOW);
         delayMicroseconds(10);
         digitalWrite(GALIL_DEC, HIGH);
         delayMicroseconds(10);
       }
-    }
-    else
-    {
+      
+    } else {
       Galil_SlowFlag = true;  // enable the GALIL slow motion
       Serial.println("Galil Slow Enabled");
     }
@@ -1059,6 +957,10 @@ void HighFrequency() { // High Frequency rate group = 5KHz
     case 10:
     case 14:
       //Serial.println("RG 2");
+      
+      if ((recording && inmotion) || (recording_oversample_time > 0))
+        SDAppendMotion(APC, rawcurrent);
+    
       break;
       
     case 4://625
@@ -1213,41 +1115,6 @@ void setup() {
   tft.fillScreen(ILI9341_BLACK);
 
 
-  SD.begin(BUILTIN_SDCARD);
-  sprintf(filelabel, "%04d", filenum);
-  strcpy(filename, filetag);
-  strcat(filename, filelabel);
-  strcat(filename, ".txt");
-
-  if (!SD.begin(chipSelect))
-  {
-    Serial.println("SD initialization failed!");
-    filestatus = 1;
-  }
-  else
-  {
-    Serial.println(">>> initializing SD card");
-    // If the data.txt file doesn't exist
-    // Create a file on the SD card and write the data labels
-    file = SD.open(filename);
-    if (!file) {
-      Serial.println("File doens't exist");
-      Serial.println("Creating file...");
-      //writeFile(filename, "current\r\n");
-      filestatus = 1;
-    }
-    else {
-      Serial.println(">>> SD: file exists");
-      filestatus = 1;
-    }
-    file.close();
-  }
-  //Serial.println("Init Cypress");
-  //strcpy(oldfilename, filename);
-
-  //checkSettings();
-  //smartDelay(100);
-
   //pinMode(SS, INPUT_PULLUP);
   //pinMode(MOSI, OUTPUT);
   //pinMode(SCK, INPUT);
@@ -1273,9 +1140,6 @@ void setup() {
 
   Serial.println(">>> SETUP COMPLETE                                    <<<");
   Serial.println("=========================================================");
-
-
-
   Serial.println("");
   Serial.println("---------------------------------------------------------");
   Serial.println("KECK ACS CONTROLS - TYPE 'help' FOR COMMANDLINE FUNCTIONS");
@@ -1290,7 +1154,18 @@ int r_sw = 0;
 
 void loop(void) {
 
+  static uint32_t last_current_time = 0;
+  uint32_t time_now;
   item_changed = 0;
+
+  /* Hey kids, what time is it? */
+  time_now = millis();
+
+  /* Get the latest current reading, every 10ms */
+  if (time_now > last_current_time + 10) {
+    rawcurrent = ina219g.getCurrent_raw();
+    last_current_time = time_now;
+  }
 
   /* Check rotary switches for changes */
   checkRotary();
@@ -1330,33 +1205,30 @@ void loop(void) {
   //if((abs)(myerror)>0)
   // DrawMenus(pagenum);
 
-  /* Process the CLI */
-  serial_commands_.ReadSerial();
+  /* Process the CLI once motion is done and sampling is complete */
+  if ((recording_oversample_time == 0) && (!inmotion)) {
+    serial_commands_.ReadSerial();
+    CheckMenu();
+    delay(10);
+  }
 
+  /* Write the file out to disk when prompted */
+  if (recording && write_file) {
 
-  CheckMenu();
-
-  delay(10);
-
-  if (recording == true  && inmotion == true) {
-
-    rawcurrent = ina219g.getCurrent_raw();
-    i2s_buff.words[bufptr++] = rawcurrent;
-    i2s_buff.words[bufptr++] = APC;
-    Serial.printf("bufptr: %d, Current: %d", bufptr, rawcurrent);
-    Serial.println("");
-    if (bufptr >= 65530)
+    /* Wait for oversample time to expire */
+    if (time_now > recording_oversample_time) {
+      
       recording = false;
-  }
+      write_file = false;
+      recording_oversample_time = 0;      
 
-  if (write_file) {
-    Serial.printf("Write File bufptr: %d", bufptr);
-    Serial.println("Write to SD card");
-    WriteCurrentData(filename);  // send the data to the diskdrive
-    bumpFilename(); // create the next filename
-    DrawMenus(pagenum);
-    write_file = false;
+      Serial.printf(">>> Writing capture to disk, %d data points at %d ms\n", sample_index, time_now);
+      SDWriteMotion();
+      DrawMenus(pagenum);
+      
+    }
   }
+  
 
   toggleLED();
   if (pagenum == 0 && menuitem == 0) // set the mode if on the first page
@@ -1370,8 +1242,6 @@ void loop(void) {
     smartDelay(1000);
   }
 
-  //Serial.printf("Page: %d, Menuitem: %d, Mode: %d",pagenum, menuitem, mode);
-  //Serial.println("");
   lcnt++; // loop counter
 }
 
