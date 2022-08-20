@@ -33,7 +33,10 @@ void cmd_help(SerialCommands* sender) {
   sender->GetSerial()->println("");
   sender->GetSerial()->println("Cypress control commands are: ");
   sender->GetSerial()->println("  CMD   PARAMS       Description");
-  sender->GetSerial()->println("  ch    (none)       Home the actuator under Cypress control");
+  sender->GetSerial()->println("  ch    (none)       Home the actuator under Cypress control     [TBD]");
+  sender->GetSerial()->println("  cm    delta  [r]   Move the actuator under Cypress control by the indicated delta value, specify r to record to SD card");
+  sender->GetSerial()->println("  ca    pos    [r]   Send the Cypress to an absolute position, specify r to record to SD card");
+  sender->GetSerial()->println("  cs    (none)       Stop the Cypress device and reinitialize it");
   sender->GetSerial()->println("");
 
 }
@@ -104,6 +107,7 @@ void cmd_galil_move(SerialCommands* sender) {
   }
 
   /* Now do the actual move */
+  GalilEnable = true;
 
   // Show the Galil status menu
   pagenum = PAGE_GALIL;
@@ -123,6 +127,8 @@ SerialCommand cmd_galil_move_("gm", cmd_galil_move);
 void cmd_galil_home(SerialCommands* sender) {
   sender->GetSerial()->println(">>> Galil homing start");
 
+  GalilEnable = true;
+
   // Show the Galil status menu
   pagenum = PAGE_GALIL;
   DrawMenus(PAGE_GALIL);
@@ -133,6 +139,120 @@ void cmd_galil_home(SerialCommands* sender) {
   sender->GetSerial()->println(">>> Galil homing complete");
 }
 SerialCommand cmd_galil_home_("gh", cmd_galil_home);
+
+
+/* ----------------------------------------------------------------------------------------------------------- */
+void cmd_cypress_move(SerialCommands* sender) {
+
+  int delta;
+  bool record = false;
+  char *p_delta;
+  char *p_record;
+
+  /* Get the parameters from the line of text */
+  p_delta = sender->Next();
+  p_record = sender->Next();
+
+  /* Convert the delta into an integer, watch out for null values! */
+  if ((p_delta == NULL) || (sscanf(p_delta, "%d", &delta) == 0)) {
+    sender->GetSerial()->println("Error: cm command requires a numeric delta value");
+    return;
+  }
+
+  /* Moves can only be so large */
+  if ((delta > 2000) || (delta < -2000)) {
+    sender->GetSerial()->println("Error: cm command delta must be no more than +/- 2000 counts");
+    return;    
+  }
+
+  /* Look for the recording flag */
+  if (p_record == NULL) {
+    record = false;    
+  } else if (p_record[0] == 'r') {
+    record = true;
+  }
+  
+  if (record) {
+    sender->GetSerial()->printf(">>> Cypress move %d counts (recorded)\n", delta);
+    CypressRecording = true;
+  } else {
+    sender->GetSerial()->printf(">>> Cypress move %d counts (not recorded)\n", delta);
+    CypressRecording = false;
+  }
+
+  /* Now do the actual move */
+  CypressSetEnable();
+
+  // Show the Cypress status menu
+  pagenum = PAGE_CYPRESS;
+  DrawMenus(PAGE_CYPRESS);
+
+  /* Set the menu field for step count */
+  mymenu[PAGE_CYPRESS].m[TOTAL].mvalue.mval.l = delta;
+  
+  CypressMove(delta);
+  
+}
+SerialCommand cmd_cypress_move_("cm", cmd_cypress_move);
+
+
+/* ----------------------------------------------------------------------------------------------------------- */
+void cmd_cypress_moveabs(SerialCommands* sender) {
+
+  int pos;
+  bool record = false;
+  char *p_pos;
+  char *p_record;
+
+  /* Get the parameters from the line of text */
+  p_pos = sender->Next();
+  p_record = sender->Next();
+
+  /* Convert the pos into an integer, watch out for null values! */
+  if ((p_pos == NULL) || (sscanf(p_pos, "%d", &pos) == 0)) {
+    sender->GetSerial()->println("Error: ca command requires a numeric position value");
+    return;
+  }
+
+  /* Look for the recording flag */
+  if (p_record == NULL) {
+    record = false;    
+  } else if (p_record[0] == 'r') {
+    record = true;
+  }
+  
+  if (record) {
+    sender->GetSerial()->printf(">>> Cypress move to %d counts (recorded)\n", pos);
+    CypressRecording = true;
+  } else {
+    sender->GetSerial()->printf(">>> Cypress move to %d counts (not recorded)\n", pos);
+    CypressRecording = false;
+  }
+
+  /* Now do the actual move */
+  CypressSetEnable();
+
+  // Show the Cypress status menu
+  pagenum = PAGE_CYPRESS;
+  DrawMenus(PAGE_CYPRESS);
+
+  /* Set the menu field for step count */
+  //mymenu[PAGE_CYPRESS].m[TOTAL].mvalue.mval.l = delta;
+
+  CypressMoveAbsolute(pos);
+
+  
+}
+SerialCommand cmd_cypress_moveabs_("ca", cmd_cypress_moveabs);
+
+
+/* ----------------------------------------------------------------------------------------------------------- */
+void cmd_cypress_stop(SerialCommands* sender) {
+
+  CypressSetEnable();
+  CypressStop();
+}
+SerialCommand cmd_cypress_stop_("cs", cmd_cypress_stop);
 
 
 /* ----------------------------------------------------------------------------------------------------------- */
@@ -198,6 +318,9 @@ void SetupControls(void) {
   serial_commands_.AddCommand(&cmd_stop_);
   serial_commands_.AddCommand(&cmd_galil_move_);
   serial_commands_.AddCommand(&cmd_galil_home_);
+  serial_commands_.AddCommand(&cmd_cypress_move_);
+  serial_commands_.AddCommand(&cmd_cypress_moveabs_);
+  serial_commands_.AddCommand(&cmd_cypress_stop_);
   serial_commands_.AddCommand(&cmd_write_);
 
 }

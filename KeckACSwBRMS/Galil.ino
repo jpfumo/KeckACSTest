@@ -287,6 +287,9 @@ void GALIL_Slow(void) {
           /* Move is complete! */ 
           inmotion = false;
           Galil_SlowFlag = false; // disable the galil_slow call
+          
+          GalilEnable = false; // Stop the BRMS from doing Galil ops
+          
           GalilEndTime = micros();
           ElapsedTime = GalilEndTime - GalilStartTime;
           mymenu[PAGE_GALIL].m[ELAPSED].mvalue.mval.l = ElapsedTime;

@@ -80,8 +80,6 @@ PCF8574 pcf8574(0x38); //pcf8574A addr = 0x70
 Adafruit_INA219 ina219g(0x44);
 Adafruit_INA219 ina219c(0x40);
 
-float kp, ki, kd;
-
 long steps = 0;
 int direction = 0;
 uint32_t GalilStartTime, GalilEndTime;
@@ -99,7 +97,7 @@ int ledToggle = 0;
 File file;
 
 // Date and time related
-unsigned long time_now = 0;
+uint32_t time_now = 0;
 String dataMessage;
 unsigned char datamsg[640];
 
@@ -120,10 +118,8 @@ uint32_t sample_index = 0;
 uint32_t recording_oversample_time = 0;
 
 bool Data_Enable = false;
-bool Galil_SlowFlag = false;
 unsigned int GainAmp = 1;
 long ElapsedTime = 0;
-int sequence = 0;
 
 short Start = 1;
 short menu = 19;
@@ -909,75 +905,119 @@ static void smartDelay(unsigned long ms)
 }
 
 
-void HighFrequency() { // High Frequency rate group = 5KHz
+/* ----------------------------------------------------------------------------------------------------------- */
+/* High Frequency rate groups at a base 10KHz */
+void HighFrequency() { 
 
-  sequence++;
+    static uint32_t brmsTask;                 // The BRMS schedule counter
 
-  if (galil_err == false && inmotion == true && Galil_SlowFlag == false) {
+    static uint32_t brmsRG1Mask = 0b00000001; // Rate group 1 mask
+    static uint32_t brmsRG2Mask = 0b00000010; // Rate group 2 mask
+    static uint32_t brmsRG3Mask = 0b00000100; // Rate group 3 mask
+    static uint32_t brmsRG4Mask = 0b00001000; // Rate group 4 mask
+    static uint32_t brmsRG5Mask = 0b00010000; // Rate group 5 mask
+    static uint32_t brmsRG6Mask = 0b00100000; // Rate group 6 mask
 
-    /* If we are more than 15 steps away from the destination, stream them into the Galil controller */
-    if (nsteps > 15) {
-      
-      nsteps -= 1;
-      
-      if (direction == CW) {
-        digitalWrite(GALIL_INC, LOW);
-        delayMicroseconds(10);
-        digitalWrite(GALIL_INC, HIGH);
-        delayMicroseconds(10);
-        
-      } else {
-        digitalWrite(GALIL_DEC, LOW);
-        delayMicroseconds(10);
-        digitalWrite(GALIL_DEC, HIGH);
-        delayMicroseconds(10);
-      }
-      
-    } else {
-      Galil_SlowFlag = true;  // enable the GALIL slow motion
-      Serial.println("Galil Slow Enabled");
-    }
-  }
+    /* Increment the BRMS task counter infinitely */
+    brmsTask++;
 
-  switch (sequence) { //Scheduled Rate Groups
-    case 1://2500
-    case 3:
-    case 5:
-    case 7:
-    case 9:
-    case 11:
-    case 13:
-    case 15:
-      chkGALILError();  // reset the GALIL input
-      //Serial.println("RG 1");
-      break;
-      
-    case 2://1250
-    case 6:
-    case 10:
-    case 14:
-      //Serial.println("RG 2");
-      
-      if ((recording && inmotion) || (recording_oversample_time > 0))
-        SDAppendMotion(APC, rawcurrent);
+    /* Determine which rate group to run.  Do this by applying the rate group masks
+       sequentially until one results in a "true" value.  
     
-      break;
-      
-    case 4://625
-    case 12:
-      //Serial.println("RG 3");
-      break;
-      
-    case 8://312.5
-      //Serial.println("RG 4");
-      break;
+       For example: the 1st rate group is invoked every time the brmsTask value ends 
+       in 0bxxx1, and ignored when it's 0bxxx0.  
+    
+       The second rate group is invoked half as often as the first: when the brmsTask
+       value ends in 0bxx10. 
+    
+       The third rate group is invoked half as often as the second: when brmsTask
+       ends in 0bx100.  
+    
+       In this way, we have decreasing tiers of tasks that are run for at most 200us.
+    
+       The "background" task does not run at interrupt level.  The main() of the program
+       represents everything non time critical, using whatever CPU is left over when the
+       interrupt returns.
+    */
 
-    case 16://156.25
-      //Serial.println("CRG");
-      GALIL_Slow();
-      sequence = 0;
-      break;
-  }
+    /* Rate group 0 is run every 100us (every invocation).  Equal to a 10KHz update rate. */
+
+    /* Move the Galil only when enabled! */
+    if (GalilEnable) {
+  
+      if (galil_err == false && inmotion == true && Galil_SlowFlag == false) {
+    
+        /* If we are more than 15 steps away from the destination, stream them into the Galil controller */
+        if (nsteps > 15) {
+          
+          nsteps -= 1;
+          
+          if (direction == CW) {
+            digitalWrite(GALIL_INC, LOW);
+            delayMicroseconds(10);
+            digitalWrite(GALIL_INC, HIGH);
+            delayMicroseconds(10);
+            
+          } else {
+            digitalWrite(GALIL_DEC, LOW);
+            delayMicroseconds(10);
+            digitalWrite(GALIL_DEC, HIGH);
+            delayMicroseconds(10);
+          }
+          
+        } else {
+          Galil_SlowFlag = true;  // enable the GALIL slow motion
+          Serial.println("Galil Slow Enabled");
+        }
+      }
+    }  
+    
+    if (brmsTask & brmsRG1Mask) {
+        
+        /* Rate group 1 is run every 200us.  Equal to a 5KHz update rate. */
+        if (GalilEnable) {
+          chkGALILError();  // reset the GALIL input
+        }
+        
+    } else if (brmsTask & brmsRG2Mask) {
+        
+        /* Rate group 2 is run every 400us, or 2.5KHz*/
+        if ((recording && inmotion) || (recording_oversample_time > 0))
+          SDAppendMotion(APC, rawcurrent);
+        
+    } else if (brmsTask & brmsRG3Mask) {
+        
+        /* Rate group 3 is run every 800us, or 1.25KHz*/
+        
+    } else if (brmsTask & brmsRG4Mask) {
+     
+        /* Rate group 4 is run every 1.6ms, or 625Hz*/
+
+    } else if (brmsTask & brmsRG5Mask) {
+     
+        /* Rate group 5 is run every 3.2ms, or 312Hz*/
+        if (GalilEnable) {
+          GALIL_Slow();
+        }
+
+    } else if (brmsTask & brmsRG6Mask) {
+     
+        /* Rate group 6 is run every 6.4ms, or 156Hz*/
+        
+        /* Query the Cypress device if it's configured and ready */
+        if (CypressEnable) {
+          CypressStatus();
+
+          /* Infer that the Cypress is moving from the position error */
+          CypressInmotion = (CypressPosition != CypressDestination);
+
+          if ((CypressRecording && CypressInmotion) || (recording_oversample_time > 0)) 
+            SDAppendMotion(CypressPosition, rawcurrent);
+            
+        }
+        
+    }
+  
 }
 
 
@@ -1115,28 +1155,16 @@ void setup() {
   tft.fillScreen(ILI9341_BLACK);
 
 
-  //pinMode(SS, INPUT_PULLUP);
-  //pinMode(MOSI, OUTPUT);
-  //pinMode(SCK, INPUT);
-  //SPCR |= _BV(SPE);
-  //SPI.attachInterrupt();
-
-  // initialize the PID constants
-  kp = 0.08;
-  ki = 1.0;
-  kd = 0.002;
   Serial.println(">>> initializing Cypress");
-  CypressInit();
+  CypressInit();  
   CypressStatus();
+  
   DrawMenus(pagenum);
   Galil_SlowFlag = false;
   galil_err = false;
   inmotion = false;
   write_file = false;
-  sequence = 0;
-  myTimer.begin(HighFrequency, 100); // start the BRMS at 5KHz
-
-
+  myTimer.begin(HighFrequency, 100); // start the BRMS at 10KHz
 
   Serial.println(">>> SETUP COMPLETE                                    <<<");
   Serial.println("=========================================================");
@@ -1144,7 +1172,6 @@ void setup() {
   Serial.println("---------------------------------------------------------");
   Serial.println("KECK ACS CONTROLS - TYPE 'help' FOR COMMANDLINE FUNCTIONS");
   Serial.println("---------------------------------------------------------");
-
 }
 
 int btn;
@@ -1155,8 +1182,9 @@ int r_sw = 0;
 void loop(void) {
 
   static uint32_t last_current_time = 0;
-  uint32_t time_now;
+  static uint32_t last_cypress_time = 0;
   item_changed = 0;
+  static bool do_once = false;
 
   /* Hey kids, what time is it? */
   time_now = millis();
@@ -1205,6 +1233,29 @@ void loop(void) {
   //if((abs)(myerror)>0)
   // DrawMenus(pagenum);
 
+
+  /* Get the Cypress status and periodically update the user */
+
+  /* Update the screen with the latest Cypress, every 100ms */
+  if (time_now >= last_cypress_time + 100) {
+
+    if ((LastCypressPosition != CypressPosition) || (!do_once)) {
+      Serial.printf("Cypress state: %d, dest: %d, position: %d\n", CypressState, CypressDestination, CypressPosition);
+      LastCypressPosition = CypressPosition;      
+    }
+    
+
+    do_once = true;
+    last_cypress_time = time_now;      
+  }
+
+  if (CypressReinit) {
+    Serial.println(">>> Re-initializing Cypress");
+    CypressInit();  
+    CypressReinit = false;
+  }
+
+
   /* Process the CLI once motion is done and sampling is complete */
   if ((recording_oversample_time == 0) && (!inmotion)) {
     serial_commands_.ReadSerial();
@@ -1219,6 +1270,7 @@ void loop(void) {
     if (time_now > recording_oversample_time) {
       
       recording = false;
+      CypressRecording = false;
       write_file = false;
       recording_oversample_time = 0;      
 
@@ -1227,6 +1279,14 @@ void loop(void) {
       DrawMenus(pagenum);
       
     }
+  } else if (write_file) {
+      /* Not recording, but file write triggered, so just reset */
+      recording = false;
+      CypressRecording = false;
+      write_file = false;
+      recording_oversample_time = 0;      
+
+      Serial.printf(">>> Move complete at %d ms\n", time_now);
   }
   
 
@@ -1236,8 +1296,6 @@ void loop(void) {
   if (pagenum == 0 && menuitem == 1) // set the mode if on the first page
     mode = 2;
   if (pagenum == 0 && menuitem == 2) {
-    CypressStatus();
-    FillinCypressResponse();
     DrawMenus(3);
     smartDelay(1000);
   }

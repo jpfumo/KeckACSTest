@@ -8,7 +8,7 @@
 //#define DEBUG_CYPRESS 
 //#define DEBUG_SWITCHES
 
-// SD
+
 
 // CLI
 //Create a 32 bytes static buffer to be used exclusive by SerialCommands object.
@@ -111,8 +111,14 @@ typedef enum {
 static float current_mA = 0;
 static int16_t rawcurrent;
 volatile bool galil_err;
+bool Galil_SlowFlag = false;
+bool GalilEnable = false;
 
 // CYPRESS
+#define CYPRESS_KP 0.9
+#define CYPRESS_KI 20.0
+#define CYPRESS_KD 0.008
+
 /* --------------------------------------------------------------------- 
  * SPI MESSAGING
  * --------------------------------------------------------------------- */
@@ -123,8 +129,8 @@ volatile bool galil_err;
    3) Transfer the max message size every time, regardless of all bytes used or not.
 */
     
-/* Set this to match the size of the status response message, 18 bytes */    
-#define MAX_MESSAGE_SIZE 21//30
+/* Set this to match the size of the status response message, 21 bytes */    
+#define MAX_MESSAGE_SIZE 21
     
 /* Opcodes that can come from the node box software */
 typedef enum {
@@ -158,14 +164,14 @@ typedef struct {
     uint8_t effsetdelta;/* PID effective setpoint increment delta, nominally 25 steps */
 } __attribute__ ((__packed__)) txMessage_config_t;
 
-/* Status message, contains desired position and such values, 12 bytes */
+/* Status message, contains desired position and such values, 10 bytes */
 typedef struct {
     uint8_t  checksum;        
     uint8_t  size;       /* Size of the message bytes, including opcode and size and checksum */
     uint8_t  opcode;     /* Operation: 02 == status */
     uint8_t  enable;     /* Enable/disable PID algorithm */
     int32_t  setpoint;   /* Setpoint (desired actuator position) */
-    uint8_t   jog;        /* Jog value, to manually move the motor; valid range -100 to 100 */ 
+    int8_t   jog;        /* Jog value, to manually move the motor; valid range -100 to 100 */ 
     uint8_t  clearfaults;/* Set to nonzero to clear all the current faults */
 } __attribute__ ((__packed__)) txMessage_status_t;
    
@@ -180,12 +186,12 @@ typedef struct {
 
 /* Wrap the message with an array of bytes */
 union {
-    uint8_t               buf[MAX_MESSAGE_SIZE];
+    uint8_t             buf[MAX_MESSAGE_SIZE];
     txMessage_overlay_t overlay;
     txMessage_config_t  config;
     txMessage_status_t  status;  
     txMessage_setenc_t  setenc;
-} txMessage;
+} txMessage, txMessageCopy;
 
 /* Message back to the BBB, watch out for alignment here by packing the structure (should be 18 bytes) */
 typedef struct  {  
@@ -210,5 +216,15 @@ union {
     rxMessage_t msg;
 } rxMessage;
 
+/* Some globals for the Cypress */
+uint8_t CypressPIDEnable = 0;
+bool CypressReinit = false;
+bool CypressEnable = false;
+int32_t CypressPosition, LastCypressPosition, CypressDestination = 0;
+uint8_t CypressSequence = 0;
+uint8_t CypressState = 0;
+float CypressPWM = 0.0;
+bool CypressRecording = false;
+bool CypressInmotion = false;
 
 #endif
