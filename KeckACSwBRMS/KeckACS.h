@@ -226,5 +226,9 @@ uint8_t CypressState = 0;
 float CypressPWM = 0.0;
 bool CypressRecording = false;
 bool CypressInmotion = false;
+bool CypressWriteFile = false;
+uint32_t CypressStartTime = 0;
+uint32_t CypressEndTime = 0;
+
 
 #endif

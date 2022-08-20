@@ -918,6 +918,8 @@ void HighFrequency() {
     static uint32_t brmsRG5Mask = 0b00010000; // Rate group 5 mask
     static uint32_t brmsRG6Mask = 0b00100000; // Rate group 6 mask
 
+    uint32_t ElapsedTime = 0;
+
     /* Increment the BRMS task counter infinitely */
     brmsTask++;
 
@@ -1009,7 +1011,22 @@ void HighFrequency() {
           CypressStatus();
 
           /* Infer that the Cypress is moving from the position error */
-          CypressInmotion = (CypressPosition != CypressDestination);
+          if (CypressInmotion) {
+            
+            if (CypressPosition == CypressDestination) {
+            
+              CypressWriteFile = true;
+              CypressInmotion = false;
+
+              CypressEndTime = micros();
+              ElapsedTime = CypressEndTime - CypressStartTime;
+              Serial.printf("move to %d is complete in %0.1f us\n", CypressPosition, ElapsedTime);
+              SDSetTimes(CypressStartTime, CypressEndTime);
+            }
+          } else {
+            CypressInmotion = (CypressPosition != CypressDestination);
+            CypressStartTime = micros();
+          }
 
           if ((CypressRecording && CypressInmotion) || (recording_oversample_time > 0)) 
             SDAppendMotion(CypressPosition, rawcurrent);
@@ -1264,7 +1281,7 @@ void loop(void) {
   }
 
   /* Write the file out to disk when prompted */
-  if (recording && write_file) {
+  if ((recording || CypressRecording) && (write_file || CypressWriteFile)) {
 
     /* Wait for oversample time to expire */
     if (time_now > recording_oversample_time) {
@@ -1272,6 +1289,7 @@ void loop(void) {
       recording = false;
       CypressRecording = false;
       write_file = false;
+      CypressWriteFile = false;
       recording_oversample_time = 0;      
 
       Serial.printf(">>> Writing capture to disk, %d data points at %d ms\n", sample_index, time_now);
@@ -1279,11 +1297,13 @@ void loop(void) {
       DrawMenus(pagenum);
       
     }
-  } else if (write_file) {
+    
+  } else if (write_file || CypressWriteFile) {
       /* Not recording, but file write triggered, so just reset */
       recording = false;
       CypressRecording = false;
       write_file = false;
+      CypressWriteFile = false;
       recording_oversample_time = 0;      
 
       Serial.printf(">>> Move complete at %d ms\n", time_now);
