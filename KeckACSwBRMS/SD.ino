@@ -4,7 +4,7 @@
 
 /* ----------------------------------------------------------------------------------------------------------- */
 /* Append data to the current capture */
-void SDAppendMotion(uint32_t apc, uint32_t current) {
+void SDAppendMotionGalil(uint32_t apc, uint32_t current) {
 
   /* Stop capturing after max (10k) entries */
   if (sample_index > MAX_SAMPLES) 
@@ -15,6 +15,23 @@ void SDAppendMotion(uint32_t apc, uint32_t current) {
   samples[sample_index].current = current;
 
   sample_index++;
+  SamplesAreCypress = false;
+}
+
+
+/* ----------------------------------------------------------------------------------------------------------- */
+void SDAppendMotionCypress(uint32_t apc, int16_t current) {
+
+  /* Stop capturing after max (10k) entries */
+  if (sample_index > MAX_SAMPLES) 
+    return;
+
+  samples[sample_index].ts = micros();
+  samples[sample_index].apc = apc;  
+  samples[sample_index].current = current;
+
+  sample_index++;
+  SamplesAreCypress = true;
 }
 
 
@@ -141,7 +158,13 @@ void SDWriteMotion(void) {
     /* Convert struct to JSON */
     samples_json["samples"][i]["ts"] = samples[i].ts;
     samples_json["samples"][i]["apc"] = samples[i].apc;
-    samples_json["samples"][i]["current"] = float(samples[i].current) * 0.004;
+
+    /* The Galil needs current scaled, the Cypress does not */
+    if (SamplesAreCypress) {
+      samples_json["samples"][i]["current"] = float(samples[i].current);
+    } else {
+      samples_json["samples"][i]["current"] = float(samples[i].current) * 0.004;
+    }
   }
 
   bytes_written = serializeJsonPretty(samples_json, file);

@@ -111,7 +111,7 @@ void GALILpulse(int steps, int direction, int pulsedelay) {
       delayMicroseconds(pulsedelay);
       
       if (recording == true) {
-        SDAppendMotion(APC, rawcurrent);
+        SDAppendMotionGalil(APC, rawcurrent);
       }
       
     }
@@ -123,7 +123,7 @@ void GALILpulse(int steps, int direction, int pulsedelay) {
       delayMicroseconds(pulsedelay);
       
       if (recording == true) {
-        SDAppendMotion(APC, rawcurrent);
+        SDAppendMotionGalil(APC, rawcurrent);
       }
       
     }
@@ -291,7 +291,7 @@ void GALIL_Slow(void) {
           GalilEnable = false; // Stop the BRMS from doing Galil ops
           
           GalilEndTime = micros();
-          ElapsedTime = GalilEndTime - GalilStartTime;
+          ElapsedTime = (GalilEndTime - GalilStartTime) / 1000;
           mymenu[PAGE_GALIL].m[ELAPSED].mvalue.mval.l = ElapsedTime;
           Serial.printf("move to %d is complete in %0.1f us\n", APC, ElapsedTime);
 
@@ -310,6 +310,9 @@ void GALIL_Slow(void) {
         Serial.printf("%d steps to go.\n", nsteps);
         #endif        
       }
+    } else {
+        Serial.printf("GALIL ERROR\n");
+     
     }
   }
 }

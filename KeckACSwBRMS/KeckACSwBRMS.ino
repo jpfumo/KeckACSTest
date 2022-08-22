@@ -116,13 +116,14 @@ typedef struct {
 sample_t samples[MAX_SAMPLES];
 uint32_t sample_index = 0;
 uint32_t recording_oversample_time = 0;
+bool SamplesAreCypress = false;
 
 bool Data_Enable = false;
 unsigned int GainAmp = 1;
 long ElapsedTime = 0;
 
 short Start = 1;
-short menu = 19;
+short menu = 19;  
 short sample = 0;       // index for double buffer
 uint8_t rotation = 0;
 int buttonState = 0;
@@ -247,11 +248,11 @@ void doStrutEncoderA()
   if (r_sw == 1 || r_sw == 2) {
     //CW;
     APC--;
-    //Serial.println("CW");
+    Serial.printf("A CW %d\n", APC);
   } else if (r_sw == 0 || r_sw == 3) {
     //CCW
     APC++;
-    //Serial.println("CCW");
+    Serial.printf("A CCW %d\n", APC);
   }
   mymenu[PAGE_GALIL].m[APCREG].mvalue.mval.l = APC;
   //Serial.printf("a=%d, b=%d, r_sw= %d, APC= %d", sA, sB, r_sw, APC);
@@ -278,11 +279,11 @@ void doStrutEncoderB()
   if (r_sw == 1 || r_sw == 2) {
     //CW;
     APC++;
-    //Serial.println("CCW");
+    Serial.printf("B CCW %d\n", APC);
   } else if (r_sw == 0 || r_sw == 3) {
     //CCW
     APC--;
-    //Serial.println("CW");
+    Serial.printf("B CW %d\n", APC);
   }
   mymenu[PAGE_GALIL].m[APCREG].mvalue.mval.l = APC;
 
@@ -985,7 +986,7 @@ void HighFrequency() {
         
         /* Rate group 2 is run every 400us, or 2.5KHz*/
         if ((recording && inmotion) || (recording_oversample_time > 0))
-          SDAppendMotion(APC, rawcurrent);
+          SDAppendMotionGalil(APC, rawcurrent);
         
     } else if (brmsTask & brmsRG3Mask) {
         
@@ -1029,7 +1030,7 @@ void HighFrequency() {
           }
 
           if ((CypressRecording && CypressInmotion) || (recording_oversample_time > 0)) 
-            SDAppendMotion(CypressPosition, rawcurrent);
+            SDAppendMotionCypress(CypressPosition, CypressCurrent);
             
         }
         
@@ -1257,7 +1258,7 @@ void loop(void) {
   if (time_now >= last_cypress_time + 100) {
 
     if ((LastCypressPosition != CypressPosition) || (!do_once)) {
-      Serial.printf("Cypress state: %d, dest: %d, position: %d\n", CypressState, CypressDestination, CypressPosition);
+      Serial.printf("Cypress state: %d, dest: %d, position: %d, current: %d\n", CypressState, CypressDestination, CypressPosition, CypressCurrent);
       LastCypressPosition = CypressPosition;      
     }
     

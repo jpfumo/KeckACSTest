@@ -87,6 +87,7 @@ bool CypressWrite(void) {
     CypressPosition = rxMessage.msg.position;
     CypressState = rxMessage.msg.state;
     CypressPWM = rxMessage.msg.pwm;
+    CypressCurrent = rxMessage.msg.current;
     
     mymenu[PAGE_CYPREPLY].m[0].mvalue.mval.b = rxMessage.msg.checksum;
     mymenu[PAGE_CYPREPLY].m[1].mvalue.mval.b = (rxMessage.msg.version0 << 16) | (rxMessage.msg.version1 << 8) | rxMessage.msg.version2;

@@ -4,7 +4,7 @@
 
 // Switches to turn on certain debug messaging
 //#define DEBUG_MENUS 
-//#define DEBUG_GALIL
+#define DEBUG_GALIL
 //#define DEBUG_CYPRESS 
 //#define DEBUG_SWITCHES
 
@@ -229,6 +229,7 @@ bool CypressInmotion = false;
 bool CypressWriteFile = false;
 uint32_t CypressStartTime = 0;
 uint32_t CypressEndTime = 0;
+int16_t CypressCurrent = 0;
 
 
 #endif
