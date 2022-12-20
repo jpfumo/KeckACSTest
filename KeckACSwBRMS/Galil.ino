@@ -9,7 +9,7 @@
 
 
 // disable the GALIL for input --- if error too high
-void doGALILError()
+void doGALILError(void)
 {
   int err;
   err = digitalRead(GALIL_ERRn);
@@ -20,14 +20,15 @@ void doGALILError()
 }
 
 // re-enables the GALIL for input
-void chkGALILError()
+int chkGALILError(void)
 {
   int err;
   err = digitalRead(GALIL_ERRn);
-  if (err == 1) {
-    attachInterrupt(digitalPinToInterrupt(GALIL_ERRn), doGALILError, LOW);
-    galil_err = false;
-  }
+  if(err == 1) // invert, error when signal is low (not)
+    err = 0;
+  else
+    err = 1;
+  return(err);
 }
 
 int  readGALILError(void) {
@@ -40,7 +41,7 @@ int  readGALILError(void) {
 }
 
 volatile bool foundGalilHome = false;
-void doGalilHome()
+void doGalilHome(void)
 {
   foundGalilHome = true;
   Serial.println(">>> Found Galil home");
@@ -48,14 +49,14 @@ void doGalilHome()
 }
 
 volatile bool foundGalilIndex = false;
-void doGalilIndex()
+void doGalilIndex(void)
 {
   foundGalilIndex = true;
   Serial.println(">>> Found Galil index");
   detachInterrupt(digitalPinToInterrupt(GALIL_IDX));
 }
 
-uint16_t readGALILcurrent() {
+uint16_t readGALILcurrent(void) {
   //shuntvoltage = ina219g.getShuntVoltage_mV();
   //busvoltage = ina219g.getBusVoltage_V();
   //current_mA = ina219g.getCurrent_mA();
@@ -76,27 +77,30 @@ int GALILGo(int k) {
   bufptr = 0;
 
   // set the direction based on the sign of the steps
-  if (mymenu[PAGE_GALIL].m[TOTAL].mvalue.mval.l > 0) {
-    direction = CCW;
-  }
-  else {
-    direction = CW;
-  }
+  //if (mymenu[PAGE_GALIL].m[TOTAL].mvalue.mval.l > 0) {
+  //  direction = CCW;
+  //}
+  //else {
+  //  direction = CW;
+  //}
 
   steps = mymenu[PAGE_GALIL].m[TOTAL].mvalue.mval.l;
-  Serial.printf("steps: %d", steps);
-  Serial.println("");
-  nsteps = (abs)(steps);
+  NEWAPC = APC + steps; // calculate the new APC value
+  //Serial.printf("steps: %d", steps);
+  //Serial.println("");
+  //nsteps = (abs)(steps);
   GalilStartTime = micros();
+  
 
-  Serial.printf("APC: %d   steps: %d   nsteps: %d   n= %d   r= %d   Dir= %d  @  %d ms", APC, steps, nsteps,  n, remain, direction, GalilStartTime); 
+  Serial.printf("APC: %d,   steps: %d,  r= %d", APC, steps); 
   Serial.println("");
 
-  galil_err = false; // enable the motion
+  //galil_err = false; // enable the motion
   inmotion = true;
   Galil_SlowFlag = false;
   write_file = false;
-
+  GalilEnable = true;
+  LastRecord = false;
   return (0);
 
 }
@@ -130,7 +134,7 @@ void GALILpulse(int steps, int direction, int pulsedelay) {
   }
 }
 
-void GALILReset() {
+void GALILReset(void) {
   digitalWrite(GALIL_RST, HIGH);
   delay(50);
   digitalWrite(GALIL_RST, LOW);
@@ -140,20 +144,22 @@ void GALILReset() {
 
 }
 
-void GALILHold() {
+void GALILHold(void) {
   digitalWrite(GALIL_RST, HIGH);
   delay(50);
   digitalWrite(GALIL_RST, LOW);
   delay(50);
 }
 
-void GALILRelease() {
+void GALILRelease(void) {
   digitalWrite(GALIL_RST, HIGH);
   delay(50);
 }
 
 int GALILHome(int i) {
 
+// Just Clear the APC
+/*
   attachInterrupt(digitalPinToInterrupt(GALIL_HOM), doGalilHome, LOW);
   attachInterrupt(digitalPinToInterrupt(GALIL_IDX), doGalilIndex, HIGH);
 
@@ -171,6 +177,9 @@ int GALILHome(int i) {
     //delay(100);
   }
   delay(100);// WAIT FOR ROTOR TO SETTLE OUT BEFORE ZERO OF APC
+  */
+  leds[0] = CRGB(50, 0, 0);
+  FastLED.show();
   MTRPUL = 0;   //reset the MTRPUL register
   APC = 0;      // reset the APC
   mymenu[PAGE_GALIL].m[APCREG].mvalue.mval.l = APC;
@@ -291,7 +300,7 @@ void GALIL_Slow(void) {
           GalilEnable = false; // Stop the BRMS from doing Galil ops
           
           GalilEndTime = micros();
-          ElapsedTime = (GalilEndTime - GalilStartTime) / 1000;
+          ElapsedTime = GalilEndTime - GalilStartTime;
           mymenu[PAGE_GALIL].m[ELAPSED].mvalue.mval.l = ElapsedTime;
           Serial.printf("move to %d is complete in %0.1f us\n", APC, ElapsedTime);
 
@@ -316,5 +325,18 @@ void GALIL_Slow(void) {
     }
   }
 }
+
+int initGALILError(void){
+
+  int target = 0x70;
+  databuf[0] = 0xff;
+  Wire.beginTransmission(target);   // Slave address
+  Wire.write(databuf,1); // Write string to I2C Tx buffer (incl. string null at end)
+  Wire.endTransmission();           // Transmit to Slave
+}
+
+#define DigitalInput byte
+//#define PCF8574_LOW_MEMORY
+
 
 #pragma message "---------- BUILDING GALIL - DONE ----------"
